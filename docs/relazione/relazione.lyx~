@@ -1,0 +1,951 @@
+#LyX 2.1 created this file. For more info see http://www.lyx.org/
+\lyxformat 474
+\begin_document
+\begin_header
+\textclass scrbook
+\options refpage,intoc,bibliography=totoc,index=totoc,BCOR7.5mm,captions=tableheading
+\use_default_options true
+\begin_modules
+enumitem
+customHeadersFooters
+\end_modules
+\maintain_unincluded_children false
+\language italian
+\language_package default
+\inputencoding auto
+\fontencoding global
+\font_roman default
+\font_sans default
+\font_typewriter default
+\font_math auto
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_osf false
+\font_sf_scale 100
+\font_tt_scale 100
+\graphics default
+\default_output_format default
+\output_sync 0
+\bibtex_command bibtex
+\index_command default
+\paperfontsize 12
+\spacing single
+\use_hyperref true
+\pdf_title "Relazione Progetto Laboratiorio di Sistemi Operativi"
+\pdf_author "Nicola Dardanis"
+\pdf_subject "SOL"
+\pdf_keywords "SOL"
+\pdf_bookmarks true
+\pdf_bookmarksnumbered true
+\pdf_bookmarksopen false
+\pdf_bookmarksopenlevel 1
+\pdf_breaklinks false
+\pdf_pdfborder false
+\pdf_colorlinks true
+\pdf_backref false
+\pdf_pdfusetitle true
+\pdf_quoted_options "linkcolor=black, citecolor=black, urlcolor=blue, filecolor=blue, pdfpagelayout=OneColumn, pdfnewwindow=true, pdfstartview=XYZ, plainpages=false"
+\papersize default
+\use_geometry false
+\use_package amsmath 1
+\use_package amssymb 1
+\use_package cancel 1
+\use_package esint 1
+\use_package mathdots 1
+\use_package mathtools 1
+\use_package mhchem 1
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification true
+\use_refstyle 0
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\paragraph_indentation default
+\quotes_language french
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tracking_changes false
+\output_changes false
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\end_header
+
+\begin_body
+
+\begin_layout Title
+Relazione Progetto Laboratorio di Sistemi Operativi
+\end_layout
+
+\begin_layout Author
+Nicola Dardanis - 579047
+\end_layout
+
+\begin_layout Date
+A.A.
+ 2018/2019
+\end_layout
+
+\begin_layout Standard
+\begin_inset CommandInset toc
+LatexCommand tableofcontents
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Chapter
+Scelte progettuali
+\end_layout
+
+\begin_layout Standard
+Di seguito sono illustrate le principali scelte progettuali effettuate durante
+ la realizzazione del progetto.
+\begin_inset Newline newline
+\end_inset
+
+L'applicazione si compone, come da consegna, di un server multithread che
+ ad ogni richiesta di connessione ricevuta crea un thread servente dedicato,
+ di una libreria statica per la comunicazione con il server e un client
+ di test.
+\end_layout
+
+\begin_layout Section
+Gestione della memoria
+\end_layout
+
+\begin_layout Subsection
+Stack e heap
+\end_layout
+
+\begin_layout Standard
+Si è preferita una allocazione su stack quando possibile, rispetto a una
+ su heap, in quanto:
+\end_layout
+
+\begin_layout Enumerate
+i varii threads condividono la memoria heap con rischio di saturazione durante
+ lo scambio concorrente di dati di grande dimensione;
+\end_layout
+
+\begin_layout Enumerate
+si sposa bene con la bufferizzazione dei dati scambiati fra client e server
+ (v.
+ 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "sub:Bufferizzazione-dei-messaggi"
+
+\end_inset
+
+, 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "sec:dataBuffer_t"
+
+\end_inset
+
+);
+\end_layout
+
+\begin_layout Enumerate
+il GC è semplificato riducendo il rischio di memory leak e l'ultilizzo di
+ strutture dati dedicate (es.
+ lista concorrente dei puntatori allocati da deallocare nella funzione di
+ cleanup).
+\end_layout
+
+\begin_layout Standard
+In particolare l'allocazione dinamica è impiegata solo nel passaggio del
+ descrittore della socket ai threads serventi (cfr.
+
+\emph on
+ server.c
+\emph default
+), per le statistiche del server che utilizzano liste concatenate (v.
+ 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "sec:Lista-concatenata"
+
+\end_inset
+
+) e nella libreria di accesso (cfr.
+ 
+\emph on
+api.h
+\emph default
+), per memorizzare i dati ricevuti dal server in un unico blocco da restituire.
+ Il server registra una funzione di cleanup con lo scopo di liberare tutta
+ l'eventuale memoria dinamica allocata e gli eventuali file temporanei.
+\end_layout
+
+\begin_layout Subsection
+Bufferizzazione dei messaggi
+\begin_inset CommandInset label
+LatexCommand label
+name "sub:Bufferizzazione-dei-messaggi"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Il server gestisce la ricezione e l'invio dei messaggi attraverso buffers
+ allocati su stack.
+ In particolare ogni thread:
+\end_layout
+
+\begin_layout Enumerate
+esegue un loop principale nel quale si mette in attesa della ricezione di
+ un header dal client, viene instanziato un buffer che, conformemente allo
+ standard POSIX dei nomi, sia abbastanza grande per contenere comando e
+ parametri; eventuali dati in eccesso sono salvati su un buffer temporaneo
+ di dimensione tale da assicurare che non si verifichi un errore di 
+\noun on
+buffer_overflow 
+\noun default
+(cfr.
+ 
+\emph on
+messages.h
+\emph default
+, v.
+ 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "sec:dataBuffer_t"
+
+\end_inset
+
+)
+\noun on
+.
+ 
+\noun default
+Le dimensioni dei buffers sono configurabili in 
+\emph on
+config.h;
+\end_layout
+
+\begin_layout Enumerate
+esegue un loop interno per le richieste di 
+\noun on
+store
+\noun default
+(
+\noun on
+retrieve)
+\noun default
+ in cui utilizza un buffer statico per la lettura/scrittura da(a) socket
+ a(da) file, sempre fornendo la lunghezza effettiva dei dati da scrivere
+ e salvando quella dei dati letti (con riuso della memoria v.
+ 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "sec:dataBuffer_t"
+
+\end_inset
+
+).
+ Si noti che i file sono gestiti mediante chiamate POSIX, che rispetto alle
+ funzioni della libreria 
+\noun on
+stdio
+\noun default
+ non sono bufferizzate in spazio utente.
+\end_layout
+
+\begin_layout Standard
+Questa scelta permette la comunicazione con il server in modo efficiente,
+ configurabile e nel rispetto del protocollo fornito, senza assunzioni sul
+ modo in cui i messaggi debbano essere effettivamente inviati (se in un
+ unico blocco o a pacchetti).
+\begin_inset Newline newline
+\end_inset
+
+Nella libreria di accesso (cfr.
+ 
+\emph on
+api.h
+\emph default
+) si segue lo stesso modello nel caso di richiesta di 
+\noun on
+retrieve
+\noun default
+, mentre per la richiesta di 
+\noun on
+store
+\noun default
+, poiché la funzione 
+\emph on
+os_store 
+\emph default
+ha come argomento l'intero blocco di dati di cui è richiesta la memorizzazione,
+ per semplicità viene effettuata una sola scrittura su socket.
+\end_layout
+
+\begin_layout Section
+Gestione dei segnali
+\end_layout
+
+\begin_layout Subsection
+Sighandler
+\end_layout
+
+\begin_layout Standard
+I segnali sono gestiti da un thread detached dedicato (
+\emph on
+sighandler
+\emph default
+), abilitato alla loro ricezione 
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+N.B.
+ Nel thread principale e nei thread serventi per le connessioni sono bloccati.
+\end_layout
+
+\end_inset
+
+, creato subito dopo l'inizializzazione delle statistiche del server (cfr.
+ 
+\emph on
+server.c
+\emph default
+).
+ Alla ricezione di un segnale la chiamata a sigwait ritorna e viene settata
+ la variabile globale di stop
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+Per le modalità di shutdown si veda 
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "sec:Soft-Shutdown-e"
+
+\end_inset
+
+ 
+\end_layout
+
+\end_inset
+
+
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+N.B.
+ Anche il segnale delle statistiche provoca lo stop del server, come da
+ consegna: 
+\begin_inset Quotes fld
+\end_inset
+
+Il server quando riceve un segnale termina il prima possibile
+\begin_inset Quotes frd
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+ (
+\emph on
+loop_breaker
+\emph default
+).
+ Nel caso si tratti di 
+\noun on
+sigusr1
+\noun default
+ vengono prima stampate le informazioni statistiche del server.
+\end_layout
+
+\begin_layout Subsection
+Soft Shutdown e consistenza dei dati
+\begin_inset CommandInset label
+LatexCommand label
+name "sec:Soft-Shutdown-e"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+La variabile di stop 
+\emph on
+loop_breaker
+\emph default
+ è presente nella guardia dei loops principali del thread principale e dei
+ threads serventi, pur essendo una variabile condivisa non è protetta da
+ mutex poiché è settata solo dal 
+\emph on
+sighandler.
+
+\emph default
+ Per assicurare la ricezione del segnale di stop da parte di tutti i threads
+ attivi, le chiamate bloccanti alla accept e alle read su socket all'interno
+ dei loops principali vengono gestiti con una select con timeout
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+Configurabile in 
+\size normal
+\emph on
+config.h
+\end_layout
+
+\end_inset
+
+ (cfr.
+ 
+\emph on
+server.c
+\emph default
+) in modo da scongiurare il blocco in lettura per un tempo indeterminato.
+ 
+\begin_inset Newline newline
+\end_inset
+
+Il thread principale una volta uscito dal ciclo si mette in attesa della
+ terminazione dei threads serventi, con wait su variabile condizione del
+ contatore (
+\emph on
+active_threads_counter
+\emph default
+) protetta da mutex.
+ Ogni thread prima di uscire decrementa la variabile contatore dei threads
+ attivi.
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+N.B.
+ Si è preferito l'approccio threads detached + wait su variabile condizione
+ a un approccio con threads su cui chiamare la join per motivi di semplicità
+ della gestione (il secondo caso ha bisogno di una struttura dati di appoggio
+ in cui memorizzare gli ids dei threads).
+\end_layout
+
+\end_inset
+
+
+\begin_inset Newline newline
+\end_inset
+
+La consistenza dei dati è garantita poiché:
+\end_layout
+
+\begin_layout Itemize
+prima della chiusura dell'applicazione si aspetta che tutti i threads attivi
+ concludano le loro operazioni;
+\end_layout
+
+\begin_layout Itemize
+ogni thread nella guardia dei loops interni (che operano sui dati per eseguire
+ 
+\emph on
+\noun on
+store 
+\emph default
+\noun default
+e 
+\noun on
+retrieve
+\noun default
+) non esegue controlli sulle variabili globali di stop.
+ Inoltre, in caso di 
+\noun on
+store
+\noun default
+, la lettura dalla socket è effettuata senza la gestione con select e timeout,
+ quindi continua fino a completa terminazione della lettura dei dati in
+ arrivo dal client o termina per un errore.
+\end_layout
+
+\begin_layout Section
+Gestione degli errori
+\end_layout
+
+\begin_layout Standard
+La gestione degli errori è standardizzata attraverso l'uso di macros definite
+ nell'header 
+\emph on
+myerror.h.
+
+\emph default
+ Inoltre per una maggiore chiarezza e gestione sono state definite enumerazioni
+ per tipologie di errori (cfr.
+ 
+\emph on
+serverapi.h, messages.h
+\emph default
+) [
+\begin_inset CommandInset ref
+LatexCommand ref
+reference "sec:Tipi-per-rappresentare"
+
+\end_inset
+
+].
+\end_layout
+
+\begin_layout Subsection
+Server - thread principale
+\end_layout
+
+\begin_layout Standard
+Gli errori che si generano nel server prima di attendere connessioni sono
+ fatali e provocano la terminazione del processo.
+ Un errore restituito invece dalle chiamate per l'accettazione della connessione
+ o la creazione del thread servente dedicato è sempicemente ignorato.
+ Nella guardia del ciclo di accettazione viene verificata anche la variabile
+ booleana di errore 
+\emph on
+global_failure
+\emph default
+, utilizzata per segnalare un errore non gestibile dell'intero processo
+ server.
+ 
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+Es.: la cartella 
+\emph on
+data
+\emph default
+ non è accessibile o non esiste al momento della memorizzazione di un file
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsection
+Server - thread servente
+\end_layout
+
+\begin_layout Standard
+Ricalcando il modello del processo principale, i varii threads serventi
+ dichiarano due proprie variabili booleane di fine ciclo:
+\emph on
+ own_breaker
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+Usata per terminare il thread in caso di 
+\noun on
+leave 
+\noun default
+o di connessione fallita in casi gestibili.
+\end_layout
+
+\end_inset
+
+
+\emph default
+ e
+\emph on
+ own_failure.
+
+\emph default
+ Queste assieme alla variabili di terminazione del processo costituiscono
+ la guardia del loop principale del singolo thread.
+ In particolare 
+\emph on
+own_failure
+\emph default
+ è usata per terminare il thread al verificarsi di errori che compromettono
+ la comunicazione e l'esecuzione di future richieste con il solo client
+ servito.
+ Tutti gli errori di esecuzione del comando richiesto sono notificati al
+ client secondo il protocollo, con brevi messaggi informativi sulla natura
+ del problema quando disponibili.
+\begin_inset Newline newline
+\end_inset
+
+Se riscontrato un errore compromettente il funzionamento dell'intera applicazion
+e si notifica l'intero sistema server tramite settaggio a true di 
+\emph on
+global_failure
+\emph default
+.
+\end_layout
+
+\begin_layout Subsection
+Libreria di accesso
+\end_layout
+
+\begin_layout Standard
+La libreria di accesso (
+\emph on
+api.h
+\emph default
+) gestisce tutti gli eventuali errori interni, come da consegna, semplicemente
+ ritornando al chiamante i valori che segnalano per le varie funzioni il
+ verificarsi di un errore (aproccio standard per una libreria).
+\end_layout
+
+\begin_layout Section
+Rappresentazione interna delle informazioni
+\begin_inset CommandInset label
+LatexCommand label
+name "sec:Tipi-per-rappresentare"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+All'interno del progetto sono presenti varie definizioni di tipo per la
+ rappresentazioni di informazioni composite (struct) e per le varie tipologie
+ di errori o richieste (enum), nell'ottica di fornire un codice maggiormente
+ leggibile e mantenibile.
+ In particolare si è preferito:
+\end_layout
+
+\begin_layout Itemize
+rappresentare per enumerazione le tipologie di richieste(risposte) che un
+ client(server) può inviare a un server(client) dopo la fase di parsing
+ in modo da rendere più agevole e comprensibile la gestione di operazioni
+ non riconosciute e la selezione delle funzioni preposte allo svolgimento
+ dei relativi compiti;
+\end_layout
+
+\begin_layout Itemize
+raccogliere tutte le informazioni degli header in strutture dedicate, così
+ da differenziare la fase di parsing del messaggio (cfr.
+ 
+\emph on
+messages.h
+\emph default
+) da quella di esecuzione del comando;
+\end_layout
+
+\begin_layout Itemize
+rappresentare gli errori per enumerazioni in modo da fornirne una gestione
+ puntuale e ordinata.
+\end_layout
+
+\begin_layout Chapter
+Makefile e scripts
+\end_layout
+
+\begin_layout Standard
+Nel progetto sono presenti anche un makefile e tre scripts: lo script di
+ test (
+\emph on
+test_script.sh
+\emph default
+), quello di analisi (
+\emph on
+testsum.sh
+\emph default
+) e uno script aggiuntivo di build (
+\emph on
+build.sh
+\emph default
+).
+\end_layout
+
+\begin_layout Section
+Makefile
+\end_layout
+
+\begin_layout Standard
+Il makefile oltre ai target 
+\emph on
+all
+\emph default
+, 
+\emph on
+clean
+\emph default
+ e 
+\emph on
+test
+\emph default
+ richiesti fornisce anche le opzioni:
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+
+\emph on
+cleanall
+\emph default
+ rimozione di eseguibili, cartelle e files generati automaticamente.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+
+\emph on
+debug
+\emph default
+ compilazione del codice in modalità di debug: attiva controlli aggiuntivi
+ e la stampa di informazioni utili al debugging.
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+N.B.
+ Per visualizzare su 
+\noun on
+stdout
+\noun default
+ le notifiche aggiuntive durante l'esecuzione del target 
+\emph on
+testd
+\emph default
+ è necessario commentare la redirezione dello 
+\noun on
+stderr
+\noun default
+ in 
+\emph on
+test_script.sh.
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+
+\emph on
+production 
+\emph default
+compilazione del codice in modalità produzione (alias di 
+\emph on
+all
+\emph default
+).
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+
+\emph on
+testd
+\emph default
+ come 
+\emph on
+test, 
+\emph default
+ma compila il codice attraverso il target 
+\emph on
+debug.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+
+\emph on
+test.exe 
+\emph default
+compilazione di 
+\emph on
+mytest.c 
+\emph default
+contenente test aggiuntivi di funzionalità del progetto utilizzati in fase
+ di sviluppo.
+\end_layout
+
+\begin_layout Section
+build.sh
+\end_layout
+
+\begin_layout Standard
+Script di utilità per la compilazione, chiamato dal makefile per compilare
+ i sorgenti del progetto secondo la modalità specificata (debug | produzione)
+\end_layout
+
+\begin_layout Section
+Formato del file di log
+\end_layout
+
+\begin_layout Standard
+Il file 
+\emph on
+testout.log 
+\emph default
+contiene l'output di ogni client eseguito in 
+\emph on
+test_script.sh.
+
+\emph default
+ Ogni riga contiene quindi
+\emph on
+ 
+\emph default
+le informazioni raccolte nella struct 
+\emph on
+client_stats_t 
+\emph default
+(cfr.
+ 
+\emph on
+client.c
+\emph default
+) codificate in una stringa [chiave]:[valore], in cui ogni coppia è separata
+ da virgole.
+\end_layout
+
+\begin_layout Section
+Sommario dei tests
+\end_layout
+
+\begin_layout Standard
+Il sommario dei tests contiene informazioni generali, quali numero di clients
+ lanciati in totale e percentuali di connessioni e disconnessioni avvenute
+ con successo, e informazioni più granulari sia sulla tipologia (batteria)
+ di test, come numero di clients che sono stati lanciati per test, tempo
+ medio di elaborazione delle esecuzioni con successo (utile a stimare le
+ performance dell'intero sistema client - server), sia sulle singole funzioni
+ offerte dalla libreria con conteggio delle chiamate totali e percentuali
+ di fallimento.
+\end_layout
+
+\begin_layout Chapter
+Strutture dati di appoggio
+\end_layout
+
+\begin_layout Standard
+In questa sezione vengono descritte le principali strutture dati e la loro
+ utilizzazione nel progetto.
+ Per le restanti si rimanda al codice.
+\end_layout
+
+\begin_layout Section
+Lista concatenata
+\begin_inset CommandInset label
+LatexCommand label
+name "sec:Lista-concatenata"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+I files 
+\emph on
+liste.h
+\emph default
+ e 
+\emph on
+liste.c 
+\emph default
+contengono l'interfaccia e l'implementazione di una lista concatenata semplice
+ con chiavi puntatori a caratteri.
+ Viene utilizzata esclusivamente nel codice del server per la memorizzazione
+ dei clients online e di quelli presenti nello store.
+ Le stringhe sono mantenute secondo l'ordine lessicografico.
+\end_layout
+
+\begin_layout Section
+Statistiche del server
+\end_layout
+
+\begin_layout Subsection
+Informazioni raccolte
+\end_layout
+
+\begin_layout Standard
+Le statistiche che il server stampa alla ricezione del segnale 
+\noun on
+USR1
+\noun default
+ sono memorizzate nella struct
+\emph on
+ statistics_t 
+\emph default
+(cfr.
+
+\emph on
+ serverapi.h
+\emph default
+).
+ Contengono il numero di utenti dello store, di quelli online, di files,
+ la dimensione complessiva di essi e la lista dei nomi dei clients online
+ e complessivi.
+ Le informazioni sono inizializzate dal server subito dopo aver bloccato
+ i segnali nel thread principale e prima di ogni altra operazione (accettazione
+ di connessioni) in modo da assicurare un corretto collezionamento di queste
+ che non possono essere alterate da altrimenti possibili modifiche concorrenti
+ in corso nella directory 
+\emph on
+data
+\emph default
+.
+\end_layout
+
+\begin_layout Subsection
+Gestione della concorrenza
+\end_layout
+
+\begin_layout Standard
+Le statistiche sono dichiarate globalmente all'interno del file 
+\emph on
+serverapi.c
+\emph default
+ che gestisce internamente l'accesso concorrente per la modifica di tale
+ struttura attraverso funzioni ausiliarie non esportate che operano limitate
+ da una mutex dedicata (anch'essa globale).
+\end_layout
+
+\begin_layout Section
+dataBuffer_t
+\begin_inset CommandInset label
+LatexCommand label
+name "sec:dataBuffer_t"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Struct che mantiene al suo interno un buffer di caratteri, la lunghezza
+ di esso e lo spazio occupato.
+ Utilizzata per una gestione coerente, efficiente, in termini di memoria
+ allocata e riuso di essa, e configurabile (cfr.
+ 
+\emph on
+config.h
+\emph default
+) dei buffers.
+\end_layout
+
+\end_body
+\end_document
